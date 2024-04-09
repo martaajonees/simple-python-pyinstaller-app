@@ -17,12 +17,6 @@ pipeline {
                 }
             }
         }
-        stage('Install dependencies') {
-            steps {
-                // Instalar las dependencias de Python si es necesario
-                sh 'python3 -m pip install -r pyinstaller'
-            }
-        }
         stage('Deliver'){
             steps {
                 sh "pyinstaller --onefile sources/add2vals.py"
