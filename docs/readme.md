@@ -1,8 +1,83 @@
 # Práctica Jenkins
 
+## Desplegar contenedores con Terraform
+
+Antes que nada, debemos configurar el entorno. Para ello, debemos desplegar los contenedores Docker de Jenkins y Docker-in-Docker (DinD) utilizando Terraform, 
+primero necesitamos crear un archivo `main.tf` que contenga la configuración necesaria 
+para definir la infraestructura como código.
+
+El archivo `main.tf` contendrá las definiciones de los recursos de Terraform 
+necesarios para desplegar los contenedores Docker de Jenkins y DinD. 
+
+Para desplegar contenedores Docker con Terraform, generalmente utilizamos el proveedor [Terraform Docker](https://registry.terraform.io/providers/kreuzwerker/docker/latest/docs). 
+
+```terraform
+
+
+terraform {
+  required_providers {
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 3.0.1"
+    }
+  }
+}
+
+provider "docker" {}
+
+resource "docker_image" "docker_in_docker" {
+  name = "docker:dind"
+}
+
+resource "docker_container" "docker_in_docker" {
+  name       = "docker-in-docker"
+  image      = "docker:dind"
+  privileged = true
+  ports {
+    internal = 2375
+    external = 2375
+  }
+  volumes {
+    volume_name    = docker_volume.miVolumen.name
+    container_path = "/var/www/html"
+  }
+}
+
+resource "docker_image" "jenkins" {
+  name = "jenkins/jenkins:lts"
+}
+
+resource "docker_container" "jenkins" {
+  name  = "jenkins"
+  image = "jenkins/jenkins:lts"
+  ports {
+    internal = 8081
+    external = 8081
+  }
+  depends_on = [docker_container.docker_in_docker]
+
+  volumes {
+    volume_name    = docker_volume.miVolumen.name
+    container_path = "/var/www/html"
+  }
+}
+
+
+//Creamos un recurso para el volumen de datos
+resource "docker_volume" "miVolumen" {
+  name = "mi-volumen-docker"
+}
+
+
+```
+Una vez definida nuestra configuración en `main.tf`, podemos utilizar Terraform para inicializar 
+nuestro directorio de trabajo, planificar los cambios y aplicar la configuración para crear nuestros 
+recursos de infraestructura. 
+Hecho esto, se debería poder ver en el puerto 8080 la imagen de jenkins.
+
 ## Crear una imagen de Jenkins
 
-Antes que nada, necesitamos crear una imagen de Jenkins en un contenedor Docker. Esto nos permitirá tener un entorno de Jenkins completamente configurado y listo para ser utilizado de manera consistente y reproducible.
+Ahora, necesitamos crear una imagen de Jenkins en un contenedor Docker. Esto nos permitirá tener un entorno de Jenkins completamente configurado y listo para ser utilizado de manera consistente y reproducible.
 
 El proceso de creación de la imagen de Jenkins implica la definición de un Dockerfile. Este Dockerfile incluirá las configuraciones 
 específicas de Jenkins, como la instalación de plugins, herramientas adicionales y configuraciones del entorno.
@@ -33,7 +108,7 @@ USER jenkins
 RUN jenkins-plugin-cli --plugins "blueocean docker-workflow"
 ```
 Una vez que tengamos nuestro Dockerfile listo, podemos construir la imagen de Jenkins utilizando el 
-comando `docker build . jenkins-blueocean`. Este comando leerá el Dockerfile y generará una imagen Docker 
+comando `docker build -t jenkins-blueocean .`. Este comando leerá el Dockerfile y generará una imagen Docker 
 que contiene Jenkins y todas las personalizaciones que hayamos especificado.
 
 Una vez que la imagen se haya construido con éxito, podemos crear y 
@@ -48,49 +123,7 @@ docker run --name jenkins-blueocean --restart=on-failure --detach \
   myjenkins-blueocean
 ```
 Esto iniciará una instancia de Jenkins dentro de un contenedor Docker, listo para ser utilizado.
-## Desplegar contenedores con Terraform
 
-Para desplegar los contenedores Docker de Jenkins y Docker-in-Docker (DinD) utilizando Terraform, 
-primero necesitamos crear un archivo `main.tf` que contenga la configuración necesaria 
-para definir la infraestructura como código.
-
-El archivo `main.tf` contendrá las definiciones de los recursos de Terraform 
-necesarios para desplegar los contenedores Docker de Jenkins y DinD. 
-
-Para desplegar contenedores Docker con Terraform, generalmente utilizamos el proveedor [Terraform Docker](https://registry.terraform.io/providers/kreuzwerker/docker/latest/docs). 
-
-```terraform
-
-provider "docker" {
-  host = "tcp://localhost:2375"
-}
-
-
-resource "docker_container" "docker_in_docker" {
-  name  = "docker-in-docker"
-  image = "docker:dind"
-  privileged = true
-  ports {
-    internal = 2375
-    external = 2375
-  }
-}
-
-
-resource "docker_container" "jenkins" {
-  name  = "jenkins"
-  image = "jenkins:jenkins-blueocean" 
-  ports {
-    internal = 8080
-    external = 8080
-  }
-  depends_on = [docker_container.docker_in_docker]
-}
-```
-Una vez definida nuestra configuración en `main.tf`, podemos utilizar Terraform para inicializar 
-nuestro directorio de trabajo, planificar los cambios y aplicar la configuración para crear nuestros 
-recursos de infraestructura. 
-Hecho esto, se debería poder ver en el puerto 8080 la imagen de jenkins.
 
 ## Creación del Pipeline
 Ahora, creamos el pipeline para la aplicación de python en Jenkins. 
